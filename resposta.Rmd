@@ -1,0 +1,591 @@
+---
+title: 2a Prova d'Avaluació Contínua (PAC2)
+subtitle: "Programari per a l'anàlisi de dades"
+subject: "Màster universitari en bioinformàtica i bioestadística"
+author: "Robert Buj"
+date: "22/04/2026"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: false
+    highlight: tango
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: false
+    latex_engine: xelatex
+header-includes:
+  - \usepackage{float}
+  - \usepackage[catalan]{babel}
+toc-title: "Taula de continguts"
+---
+
+\newpage
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    warning = FALSE, error = FALSE, message = FALSE,
+    # Opcions per a les figures
+    fig.align = "center"
+)
+suppressPackageStartupMessages({
+    library(datasets)
+    library(DBI)
+    library(RSQLite)
+    library(kableExtra)
+})
+```
+
+# Secció 1. Fonaments de programació i BBDD (5 punts)
+
+## Exercici 1. Anàlisis de seqüències d' ADN en una matriu. (1.25 punts)
+
+Una seqüència d'ADN està formada pels caràcters “A”, “C”, “G” i “T”. Suposem
+que, a més de la transcripció a ARN, volem analitzar diverses seqüències
+emmagatzemades en forma de matriu. Per a això, es disposa de la següent matriu,
+on cada fila representa una seqüència d'ADN:
+
+```{r, attr.source=".numberLines"}
+secuencias <- matrix(c(
+    "GATTACA",
+    "GCGTTA",
+    "TTTACG",
+    "ACGTACGT"
+), ncol = 1)
+```
+
+Es demana:
+
+a) (0.25 punts) Recórrer la matriu utilitzant un bucle i mostrar el resultat de
+   cada iteració.
+
+```{r, attr.source=".numberLines"}
+for (i in seq_len(nrow(secuencias))) {
+    print(secuencias[i, 1])
+}
+```
+
+b) (0.25 punts) A partir de la matriu secuencias definida a l'enunciat, quantes
+   files contenen almenys un nucleòtid “T”?
+
+```{r, attr.source=".numberLines"}
+contador_T <- 0
+for (i in seq_len(nrow(secuencias))) {
+    if (grepl("T", secuencias[i, 1])) {
+        contador_T <- contador_T + 1
+    }
+}
+contador_T
+```
+
+c) (0.5 punts) Definir una funció anomenada DNA_to_RNA que converteixi una
+   cadena qualsevol d'ADN en ARN substituint totes les “T” per “U” i mostrar el
+   resultat de la funció a partir d'un determinat paràmetre, per exemple, amb el
+   valor "ATTGCTT". Per assegurar les dades d'entrada, també es demana crear una
+   funció validar_adn que, donada una seqüència, validi que només contingui els
+   caràcters vàlids: “A”, “C”, “G” i “T”. D'aquesta manera, si es detecta algun
+   caràcter diferent, es mostra un missatge d'error i no es processa aquesta
+   seqüència.
+
+```{r, attr.source=".numberLines"}
+validar_adn <- function(seq) {
+    if (grepl("^[ACGT]+$", seq)) {
+        return(TRUE)
+    } else {
+        return(FALSE)
+    }
+}
+
+DNA_to_RNA <- function(dna_seq) {
+    if (validar_adn(dna_seq)) {
+        rna_seq <- gsub("T", "U", dna_seq)
+        return(rna_seq)
+    } else {
+        stop("Error: La seqüència d'ADN no és vàlida.")
+    }
+}
+
+# Provar la funció DNA_to_RNA amb una seqüència vàlida
+DNA_to_RNA("ATTGCTT")
+# Provar la funció DNA_to_RNA amb una seqüència no vàlida
+tryCatch(
+    {
+        DNA_to_RNA("ATXGCTT")
+    },
+    error = function(e) {
+        print(e$message)
+    }
+)
+```
+
+d) (0.25 punts) Executar la funció DNA_to_RNA, passant la matriu secuencias com
+   a paràmetre i mostrar el resultat iteració a iteració.
+
+```{r, attr.source=".numberLines"}
+for (i in seq_len(nrow(secuencias))) {
+    rna_result <- DNA_to_RNA(secuencias[i, 1])
+    print(rna_result)
+}
+```
+
+## Exercici 2. Càlcul de l'índex de normalització d'expressió. (1.25 punts)
+
+Suposem un experiment de RNA-seq, a partir del qual volem normalitzar
+l'expressió d'un gen respecte al total de lectures de la mostra. Aquest ajust de
+les dades es realitza per tal que siguin comparables.
+
+Suposem que es defineix l'índex de normalització com:
+
+```
+índex = lectures_gen / lectures_totals
+```
+
+Cal tenir en compte que aquests valors han de ser positius i numèrics.
+
+Resoleu les següents qüestions:
+
+a) (0.5 punts) Definir una funció en R anomenada `indice_normalizacion` que rebi
+   dos paràmetres:
+
+```
+lecturas_gen: nombre de lectures del gen.
+lecturas_totales: nombre total de lectures de la mostra.
+```
+
+   La funció ha de calcular i retornar el valor de l'índex, així com realitzar
+   el control d'errors corresponent.
+
+```{r, attr.source=".numberLines"}
+indice_normalizacion <- function(lecturas_gen, lecturas_totales) {
+    if (!is.numeric(lecturas_gen)) {
+        stop("Error: El nombre de lectures del gen ha de ser numèric.")
+    }
+    if (!is.numeric(lecturas_totales)) {
+        stop("Error: El nombre total de lectures ha de ser numèric.")
+    }
+    if (lecturas_gen < 0) {
+        stop("Error: El nombre de lectures del gen ha de ser positiu.")
+    }
+    if (lecturas_totales <= 0) {
+        stop("Error: El nombre total de lectures ha de ser major que zero.")
+    }
+    indice <- lecturas_gen / lecturas_totales
+    return(indice)
+}
+```
+
+b) (0.25 punts) Comprovar el resultat per, per exemple, els següents paràmetres:
+
+```
+lecturas_gen = 500
+lecturas_totales = 10000
+```
+
+Igualment, realitzeu proves amb diferents valors numèrics, no numèrics, etc.
+
+```{r, attr.source=".numberLines"}
+# Prova amb valors vàlids
+lecturas_gen <- 500
+lecturas_totales <- 10000
+indice_result <- indice_normalizacion(lecturas_gen, lecturas_totales)
+print(indice_result)
+
+# Prova amb valors no numèrics
+tryCatch(
+    {
+        indice_normalizacion("zero", 10000)
+    },
+    error = function(e) {
+        print(e$message)
+    }
+)
+
+# Prova amb valors negatius
+tryCatch(
+    {
+        indice_normalizacion(-100, 10000)
+    },
+    error = function(e) {
+        print(e$message)
+    }
+)
+
+# Prova amb total de lectures zero
+tryCatch(
+    {
+        indice_normalizacion(500, 0)
+    },
+    error = function(e) {
+        print(e$message)
+    }
+)
+```
+
+c) (0.5 punts) Com modificaríeu el codi per permetre a l'usuari introduir valors?
+
+```{r, attr.source=".numberLines"}
+lecturas_gen <- as.numeric(readline(
+    prompt = "Introdueix el nombre de lectures del gen: "
+))
+
+lecturas_totales <- as.numeric(readline(
+    prompt = "Introdueix el nombre total de lectures de la mostra: "
+))
+
+tryCatch(
+    {
+        indice_result <- indice_normalizacion(lecturas_gen, lecturas_totales)
+        print(paste("L'índex de normalització és:", indice_result))
+    },
+    error = function(e) {
+        print(e$message)
+    }
+)
+```
+
+## Exercici 3. Anàlisi farmacocinètica amb SQL en R (2.5 punts)
+
+Disposem del conjunt de dades Theoph del paquet datasets, que conté dades d'un
+experiment de farmacocinètica de la teofilina en diversos pacients. La teofilina
+s'utilitza per prevenir i tractar les sibilàncies, la manca d'alè i l'opressió
+al pit causada per l'asma, la bronquitis crònica, l'emfisema i altres malalties
+pulmonars.
+
+En el conjunt de dades a treballar, cada fila representa una mesura de
+concentració (conc) en un temps (time) per a un determinat subjecte (subject).
+
+Es demana:
+
+a) (0.25 punts) Carregar el paquet datasets de RStudio i el conjunt de dades
+   Theoph, així com les llibreries necessàries, DBI i RSQLite, per executar
+   consultes SQL en R. Mostreu el conjunt de dades Theoph.
+
+```{r, attr.source=".numberLines"}
+data("Theoph")
+print(Theoph)
+```
+
+b) (0.25 punts) Establir una connexió a una base de dades SQLite en memòria,
+   carregar el conjunt de dades Theoph i escriure'l com una taula anomenada
+   ‘Theoph' a la base de dades.
+
+```{r, attr.source=".numberLines"}
+con <- dbConnect(RSQLite::SQLite(), ":memory:")
+dbWriteTable(con, "Theoph", as.data.frame(Theoph), row.names = FALSE)
+```
+
+c) (0.5 punts) Realitzar una consulta SQL que calculi la concentració mitjana
+   (conc) per a cada subjecte. El resultat ha de mostrar: Subject, conc_media.
+
+```{r, attr.source=".numberLines"}
+query <- "
+    SELECT subject, AVG(conc) AS conc_media
+    FROM Theoph
+    GROUP BY subject
+"
+result <- dbGetQuery(con, query)
+print(result)
+```
+
+d) (0.5 punts) Realitzar una consulta en SQL per obtenir el temps en què ocorre
+   la concentració màxima per pacient, és a dir, per a cada subjecte, obtenir el
+   temps associat a la seva concentració màxima.
+
+```{r, attr.source=".numberLines"}
+query_max_conc <- "
+    SELECT subject, time
+    FROM Theoph
+    WHERE (subject, conc) IN (
+        SELECT subject, MAX(conc)
+        FROM Theoph
+        GROUP BY subject
+    )
+"
+result_max_conc <- dbGetQuery(con, query_max_conc)
+print(result_max_conc)
+```
+
+e) (0.5 punts) Realitzar una consulta en SQL que filtri les observacions en un
+   interval de temps; per exemple, es demana obtenir concentracions entre 2 i 6
+   hores.
+
+```{r, attr.source=".numberLines"}
+query_time_interval <- "
+    SELECT *
+    FROM Theoph
+    WHERE time BETWEEN 2 AND 6
+"
+result_time_interval <- dbGetQuery(con, query_time_interval)
+print(result_time_interval)
+```
+
+f) (0.5 punts) Realitzar una consulta en SQL per mostrar el nombre
+   d'observacions per pacient.
+
+```{r, attr.source=".numberLines"}
+query_count_observations <- "
+    SELECT subject, COUNT(*) AS num_observations
+    FROM Theoph
+    GROUP BY subject
+"
+result_count_observations <- dbGetQuery(con, query_count_observations)
+print(result_count_observations)
+```
+
+Un cop finalitzat el llistat de consultes, recordeu tancar la connexió.
+
+```{r, attr.source=".numberLines"}
+dbDisconnect(con)
+```
+
+# Secció 2: Probabilitat i simulacions (5 punts)
+
+## Exercici 4. Temps d'eliminació d'un fàrmac en sang (2.5 punts)
+
+L'objectiu d'aquest exercici és estudiar el temps que tarda un fàrmac a reduir
+la seva concentració en sang després de la seva administració.
+
+Suposem que el temps, en hores, segueix una distribució log-normal i, en
+condicions normals, la mitjana meanlog és de 1.0 i la desviació típica sdlog de
+0.25.
+
+S'ha detectat que els valors d'aquests paràmetres en pacients amb insuficiència
+renal serien:
+
+```
+meanlog = 1.4
+sdlog = 0.35
+```
+
+Nota.- La distribució log-normal és més adequada per tractar temps biològics,
+creixement bacterià, etc.
+
+Es demana:
+
+a) (0.5 punts) Representar gràficament les densitats de les dues distribucions.
+   Comentar les diferències observades.
+
+```{r, attr.source=".numberLines"}
+x <- seq(0, 10, length.out = 1000)
+dens_normal <- dlnorm(x, meanlog = 1.0, sdlog = 0.25)
+dens_insuf_renal <- dlnorm(x, meanlog = 1.4, sdlog = 0.35)
+plot(
+    x,
+    dens_normal,
+    type = "l",
+    col = "blue",
+    lwd = 2,
+    xlab = "Temps (hores)",
+    ylab = "Densitat",
+    main = "Densitat de la distribució log-normal"
+)
+lines(x, dens_insuf_renal, col = "red", lwd = 2)
+legend(
+    "topright",
+    legend = c("Condicions normals", "Insuficiència renal"),
+    col = c("blue", "red"),
+    lwd = 2
+)
+```
+
+b) (0.5 punts) Calcular la probabilitat que el fàrmac s'elimini en menys de 2
+   hores i en més de 6 hores, en ambdós casos. Interpretar els resultats.
+
+```{r, attr.source=".numberLines"}
+# Probabilitat d'eliminació en menys de 2 hores
+prob_menys_2_normal <- plnorm(2, meanlog = 1.0, sdlog = 0.25)
+prob_menys_2_insuf_renal <- plnorm(2, meanlog = 1.4, sdlog = 0.35)
+# Probabilitat d'eliminació en més de 6 hores
+prob_mes_6_normal <- 1 - plnorm(6, meanlog = 1.0, sdlog = 0.25)
+prob_mes_6_insuf_renal <- 1 - plnorm(6, meanlog = 1.4, sdlog = 0.35)
+print(paste(
+    "Probabilitat d'eliminació en menys de 2 hores (condicions normals):",
+    prob_menys_2_normal
+))
+print(paste(
+    "Probabilitat d'eliminació en menys de 2 hores (insuficiència renal):",
+    prob_menys_2_insuf_renal
+))
+print(paste(
+    "Probabilitat d'eliminació en més de 6 hores (condicions normals):",
+    prob_mes_6_normal
+))
+print(paste(
+    "Probabilitat d'eliminació en més de 6 hores (insuficiència renal):",
+    prob_mes_6_insuf_renal
+))
+```
+
+c) (1 punt) Realitzar 10.000 simulacions en cada escenari i estimar la mitjana,
+   la variància i els percentils 25%, 50% i 75%. Comparar amb els valors teòrics
+   de la mitjana i la variància de la distribució log-normal.
+
+```{r, attr.source=".numberLines"}
+set.seed(123) # Per reproducibilitat
+sim_normal <- rlnorm(10000, meanlog = 1.0, sdlog = 0.25)
+sim_insuf_renal <- rlnorm(10000, meanlog = 1.4, sdlog = 0.35)
+
+# Estimació de la mitjana, variància i percentils
+estim_normal <- c(
+    mean = mean(sim_normal),
+    var = var(sim_normal),
+    p25 = quantile(sim_normal, 0.25),
+    p50 = quantile(sim_normal, 0.5),
+    p75 = quantile(sim_normal, 0.75)
+)
+estim_insuf_renal <- c(
+    mean = mean(sim_insuf_renal),
+    var = var(sim_insuf_renal),
+    p25 = quantile(sim_insuf_renal, 0.25),
+    p50 = quantile(sim_insuf_renal, 0.5),
+    p75 = quantile(sim_insuf_renal, 0.75)
+)
+print("Estimacions per condicions normals:")
+print(estim_normal)
+print("Estimacions per insuficiència renal:")
+print(estim_insuf_renal)
+
+# Càlcul de la mitjana i variància teòrica de la distribució log-normal
+teo_mean_normal <- exp(1.0 + (0.25^2) / 2)
+teo_var_normal <- (exp(0.25^2) - 1) * exp(2 * 1.0 + 0.25^2)
+teo_mean_insuf_renal <- exp(1.4 + (0.35^2) / 2)
+teo_var_insuf_renal <- (exp(0.35^2) - 1) * exp(2 * 1.4 + 0.35^2)
+print(paste("Mitjana teòrica (condicions normals):", teo_mean_normal))
+print(paste("Variància teòrica (condicions normals):", teo_var_normal))
+print(paste("Mitjana teòrica (insuficiència renal):", teo_mean_insuf_renal))
+print(paste("Variància teòrica (insuficiència renal):", teo_var_insuf_renal))
+
+# Comparació dels resultats en una taula amb kable
+comparacio <- data.frame(
+    Escenari = c("Condicions normals", "Insuficiència renal"),
+    Mitjana_Estimada = c(estim_normal["mean"], estim_insuf_renal["mean"]),
+    Variancia_Estimada = c(estim_normal["var"], estim_insuf_renal["var"]),
+    Mitjana_Teorica = c(teo_mean_normal, teo_mean_insuf_renal),
+    Variancia_Teorica = c(teo_var_normal, teo_var_insuf_renal)
+)
+comparacio |>
+    kable(
+        caption = "Comparació de les estimacions amb els valors teòrics",
+        col.names = c(
+            "Escenari", "Mitjana Estimada", "Variància Estimada",
+            "Mitjana Teòrica", "Variància Teòrica"
+        )
+    ) |>
+    kable_styling(full_width = FALSE, position = "center")
+```
+
+d) (0.5 punts) Fer una breu reflexió de l'estudi realitzat a partir dels
+   resultats anteriors.
+
+Els resultats mostren que l'escenari d'insuficiència renal desplaça la
+distribució cap a la dreta i incrementa la dispersió, de manera que el temps
+d'eliminació tendeix a ser més llarg i més variable. Això es reflecteix en una
+probabilitat menor que el fàrmac s'elimini ràpidament i una probabilitat més
+gran de persistir més enllà de 6 hores. Les simulacions són coherents amb els
+valors teòrics, de manera que confirmen el comportament esperat de la
+distribució log-normal en ambdós escenaris.
+
+## Exercici 5. Resposta a un tractament analgèsic en dolor crònic (2.5 punts)
+
+Cal avaluar l'eficàcia d'un nou tractament analgèsic en pacients amb dolor
+crònic, del qual sabem que no tots els pacients responen igual.
+
+A partir d'estudis previs, el 25% dels pacients “responen al tractament”, és a
+dir, experimenten una reducció significativa del dolor. En canvi, el 75% restant
+“no responen al tractament”.
+
+En pacients que responen al tractament, la probabilitat de presentar millora
+clínica després d'una setmana és del 80%. En la resta de pacients, la
+probabilitat de presentar millora (efecte placebo o variabilitat) és del 20%.
+
+a) (0.5 punts) Si seleccionem 120 pacients tractats, quina és la probabilitat
+   que almenys 50 reportin millora? Calcular-ho de forma exacta i mitjançant
+   simulació.
+
+```{r, attr.source=".numberLines"}
+set.seed(123) # Per reproducibilitat
+# Paràmetres
+n_pacients <- 120
+prob_resposta <- 0.25
+prob_millora_resposta <- 0.80
+prob_millora_no_resposta <- 0.20
+# Simulació
+simulacions <- 10000
+resultats <- replicate(simulacions, {
+    pacients <- rbinom(n_pacients, 1, prob_resposta)
+    millora <- ifelse(
+        pacients == 1,
+        rbinom(n_pacients, 1, prob_millora_resposta),
+        rbinom(n_pacients, 1, prob_millora_no_resposta)
+    )
+    sum(millora)
+})
+# Probabilitat que almenys 50 reportin millora
+prob_almenys_50 <- mean(resultats >= 50)
+print(paste("Probabilitat que almenys 50 reportin millora (simulació):", prob_almenys_50))
+```
+
+b) (0.5 punts) Si seleccionem 30 pacients amb resposta al tractament, quina és
+   la probabilitat que almenys 25 millorin? I si seleccionem 80 pacients que no
+   responen al tractament, quina és la probabilitat que com a màxim 25 millorin?
+
+```{r, attr.source=".numberLines"}
+set.seed(123) # Per reproducibilitat
+# Paràmetres
+n_resposta <- 30
+n_no_resposta <- 80
+# Simulació per pacients que responen al tractament
+simulacions_resposta <- replicate(simulacions, {
+    millora_resposta <- rbinom(n_resposta, 1, prob_millora_resposta)
+    sum(millora_resposta)
+})
+prob_almenys_25_resposta <- mean(simulacions_resposta >= 25)
+print(paste(
+    "Probabilitat que almenys 25 millorin entre els que responen al tractament:",
+    prob_almenys_25_resposta
+))
+# Simulació per pacients que no responen al tractament
+simulacions_no_resposta <- replicate(simulacions, {
+    millora_no_resposta <- rbinom(n_no_resposta, 1, prob_millora_no_resposta)
+    sum(millora_no_resposta)
+})
+prob_maxim_25_no_resposta <- mean(simulacions_no_resposta <= 25)
+print(paste(
+    "Probabilitat que com a màxim 25 millorin entre els que no responen al tractament:",
+    prob_maxim_25_no_resposta
+))
+```
+
+c) (1 punt) Representar la distribució del nombre de pacients que milloren en
+   ambdós grups i comentar els resultats.
+
+```{r, attr.source=".numberLines"}
+hist(
+    simulacions_resposta,
+    breaks = seq(-0.5, n_resposta + 0.5, by = 1),
+    col = "blue",
+    main = "Distribució dels pacients que milloren (resposta al tractament)",
+    xlab = "Nombre de pacients que milloren",
+    ylab = "Freqüència"
+)
+hist(
+    simulacions_no_resposta,
+    breaks = seq(-0.5, n_no_resposta + 0.5, by = 1),
+    col = "red",
+    main = "Distribució dels pacients que milloren (no resposta al tractament)",
+    xlab = "Nombre de pacients que milloren",
+    ylab = "Freqüència"
+)
+```
+
+d) (0.5 punts) Fer una breu reflexió de l'estudi realitzat a partir dels
+   resultats anteriors.
+
+L'estudi indica que la resposta al tractament té un efecte clar sobre la
+probabilitat de millora: els pacients que responen al tractament presenten una
+proporció de millora molt superior als que no responen. Per això, la
+distribució del nombre de pacients que milloren queda més desplaçada cap a
+valors alts en el grup de resposta. En canvi, en el grup de no resposta la
+millora continua existint, però amb una probabilitat molt més baixa i més
+compatible amb variabilitat o efecte placebo.
